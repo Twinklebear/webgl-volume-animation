@@ -1,10 +1,31 @@
-# WebGPU Webpack Starter
+# WebGL Volume Animation
 
-A starter template for [WebGPU](https://gpuweb.github.io/gpuweb/) development that uses [webpack](https://webpack.js.org/) to build the code
-and manage dependencies. You'll also need [node.js](https://nodejs.org/) installed for package management
-and running tasks.
+Play back 3D volumetric time series data
 
-## Getting Started
+## Data Format
+
+Timesteps should be stored as an image stack in a zip files. Supported image types
+are webp (in the future maybe png, jpg, etc). The zip structure should be:
+
+```
+data.zip:
+- <prefix>0000.webp
+- ...
+- <prefix>####.webp
+```
+
+Where `<prefix>` is any string prefix.
+
+Multiple timesteps can be loaded by uploading a set of zip files or providing a text file
+which has the URL of each timestep. The text file should have one URL per line:
+
+```
+https://.../timestep000.zip
+...
+https://.../timestep###.zip
+```
+
+## Running
 
 After cloning the repo run
 
@@ -29,6 +50,3 @@ npm run deploy
 Then you can copy the content of the `dist/` directory to your webserver. You can build a development
 distribution by running `npm run build`.
 
-If everything's working you should see this page in your browser when you run the application:
-
-<img width="1147" alt="Expected output of the starter template" src="https://user-images.githubusercontent.com/1522476/133895532-03f84dbd-bb3a-4c74-ab9d-fd74506c3a74.png">

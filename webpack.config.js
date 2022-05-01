@@ -15,8 +15,8 @@ module.exports = {
                 type: "asset/resource",
             },
             {
-                // Embed your WGSL files as strings
-                test: /\.wgsl$/i,
+                // Embed GLSL files as strings
+                test: /\.(glsl|vert|frag)$/i,
                 type: "asset/source",
             }
         ]

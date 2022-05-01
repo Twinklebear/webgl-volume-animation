@@ -1,114 +1,70 @@
-// We use webpack to package our shaders as string resources that we can import
-import shaderCode from "./triangle.wgsl";
+import {ArcballCamera} from "arcball_camera";
+import {Controller} from "ez_canvas_controller";
+import {mat4, vec3} from "gl-matrix";
+import {JSZip} from "jszip";
+import {colormaps} from "./colormaps";
+import {Shader} from "./shader";
+import fragmentSrc from "./volume.frag";
+import vertexSrc from "./volume.vert";
+
+const cubeStrip = [
+    1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0,
+    1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0
+];
+
+const defaultEye = vec3.set(vec3.create(), 0.5, 0.5, 2.5);
+const defaultCenter = vec3.set(vec3.create(), 0.5, 0.5, 0.5);
+const defaultUp = vec3.set(vec3.create(), 0.0, 1.0, 0.0);
+
+var gl = null;
 
 (async () => {
-    if (navigator.gpu === undefined) {
-        document.getElementById("webgpu-canvas").setAttribute("style", "display:none;");
-        document.getElementById("no-webgpu").setAttribute("style", "display:block;");
+    var canvas = document.getElementById("webgl-canvas");
+    gl = canvas.getContext("webgl2");
+    if (!gl) {
+        document.getElementById("webgl-canvas").setAttribute("style", "display:none;");
+        document.getElementById("no-webgl").setAttribute("style", "display:block;");
         return;
     }
 
-    // Get a GPU device to render with
-    var adapter = await navigator.gpu.requestAdapter();
-    var device = await adapter.requestDevice();
+    // Setup camera and camera controls
+    var camera = new ArcballCamera(
+        defaultEye, defaultCenter, defaultUp, 2, [canvas.width, canvas.height]);
+    var proj = mat4.perspective(
+        mat4.create(), 50 * Math.PI / 180.0, canvas.width / canvas.height, 0.1, 100);
+    var projView = mat4.create();
 
-    // Get a context to display our rendered image on the canvas
-    var canvas = document.getElementById("webgpu-canvas");
-    var context = canvas.getContext("webgpu");
+    // Register mouse and touch listeners
+    var controller = new Controller();
+    controller.mousemove = function(prev, cur, evt) {
+        if (evt.buttons == 1) {
+            camera.rotate(prev, cur);
 
-    // Setup shader modules
-    var shaderModule = device.createShaderModule({code: shaderCode});
-    // This API is only available in Chrome right now
-    if (shaderModule.compilationInfo) {
-        var compilationInfo = await shaderModule.compilationInfo();
-        if (compilationInfo.messages.length > 0) {
-            var hadError = false;
-            console.log("Shader compilation log:");
-            for (var i = 0; i < compilationInfo.messages.length; ++i) {
-                var msg = compilationInfo.messages[i];
-                console.log(`${msg.lineNum}:${msg.linePos} - ${msg.message}`);
-                hadError = hadError || msg.type == "error";
-            }
-            if (hadError) {
-                console.log("Shader failed to compile");
-                return;
-            }
-        }
-    }
-
-    // Specify vertex data
-    // Allocate room for the vertex data: 3 vertices, each with 2 float4's
-    var dataBuf = device.createBuffer(
-        {size: 3 * 2 * 4 * 4, usage: GPUBufferUsage.VERTEX, mappedAtCreation: true});
-
-    // Interleaved positions and colors
-    new Float32Array(dataBuf.getMappedRange()).set([
-        1,  -1, 0, 1,  // position
-        1,  0,  0, 1,  // color
-        -1, -1, 0, 1,  // position
-        0,  1,  0, 1,  // color
-        0,  1,  0, 1,  // position
-        0,  0,  1, 1,  // color
-    ]);
-    dataBuf.unmap();
-
-    // Vertex attribute state and shader stage
-    var vertexState = {
-        // Shader stage info
-        module: shaderModule,
-        entryPoint: "vertex_main",
-        // Vertex buffer info
-        buffers: [{
-            arrayStride: 2 * 4 * 4,
-            attributes: [
-                {format: "float32x4", offset: 0, shaderLocation: 0},
-                {format: "float32x4", offset: 4 * 4, shaderLocation: 1}
-            ]
-        }]
-    };
-
-    // Setup render outputs
-    var swapChainFormat = "bgra8unorm";
-    context.configure(
-        {device: device, format: swapChainFormat, usage: GPUTextureUsage.RENDER_ATTACHMENT});
-
-    var depthFormat = "depth24plus-stencil8";
-    var depthTexture = device.createTexture({
-        size: {width: canvas.width, height: canvas.height, depth: 1},
-        format: depthFormat,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT
-    });
-
-    var fragmentState = {
-        // Shader info
-        module: shaderModule,
-        entryPoint: "fragment_main",
-        // Output render target info
-        targets: [{format: swapChainFormat}]
-    };
-
-    // Create render pipeline
-    var layout = device.createPipelineLayout({bindGroupLayouts: []});
-
-    var renderPipeline = device.createRenderPipeline({
-        layout: layout,
-        vertex: vertexState,
-        fragment: fragmentState,
-        depthStencil: {format: depthFormat, depthWriteEnabled: true, depthCompare: "less"}
-    });
-
-    var renderPassDesc = {
-        colorAttachments: [{view: undefined, loadOp: "clear", clearValue: [0.3, 0.3, 0.3, 1], storeOp: "store"}],
-        depthStencilAttachment: {
-            view: depthTexture.createView(),
-            depthLoadOp: "clear",
-            depthClearValue: 1.0,
-            depthStoreOp: "store",
-            stencilLoadOp: "clear",
-            stencilClearValue: 0,
-            stencilStoreOp: "store"
+        } else if (evt.buttons == 2) {
+            camera.pan([cur[0] - prev[0], prev[1] - cur[1]]);
         }
     };
+    controller.wheel = function(amt) {
+        camera.zoom(amt);
+    };
+    controller.pinch = controller.wheel;
+    controller.twoFingerDrag = function(drag) {
+        camera.pan(drag);
+    };
+    controller.registerForCanvas(canvas);
+
+    // Setup VAO and VBO to render the cube to run the raymarching shader
+    var vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    var vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cubeStrip), gl.STATIC_DRAW);
+
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+    var shader = new Shader(gl, vertexSrc, fragmentSrc);
 
     var animationFrame = function() {
         var resolve = null;
@@ -117,22 +73,21 @@ import shaderCode from "./triangle.wgsl";
         return promise
     };
     requestAnimationFrame(animationFrame);
-
-    // Render!
     while (true) {
         await animationFrame();
+        if (document.hidden) {
+            continue;
+        }
 
-        renderPassDesc.colorAttachments[0].view = context.getCurrentTexture().createView();
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
 
-        var commandEncoder = device.createCommandEncoder();
+        shader.use(gl);
 
-        var renderPass = commandEncoder.beginRenderPass(renderPassDesc);
+        projView = mat4.mul(projView, proj, camera.camera);
+        gl.uniformMatrix4fv(shader.uniforms["proj_view"], false, projView);
 
-        renderPass.setPipeline(renderPipeline);
-        renderPass.setVertexBuffer(0, dataBuf);
-        renderPass.draw(3, 1, 0, 0);
-
-        renderPass.end();
-        device.queue.submit([commandEncoder.finish()]);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, cubeStrip.length / 3);
+        gl.finish();
     }
 })();
