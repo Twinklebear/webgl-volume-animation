@@ -17,6 +17,7 @@ const defaultUp = vec3.set(vec3.create(), 0.0, 1.0, 0.0);
 
 var gl = null;
 var volumeTexture = null;
+var timesteps = [];
 var volumeDims = [0, 0, 0];
 
 (async () => {
@@ -74,13 +75,6 @@ var volumeDims = [0, 0, 0];
 
     var shader = new Shader(gl, vertexSrc, fragmentSrc);
 
-    var animationFrame = function() {
-        var resolve = null;
-        var promise = new Promise(r => resolve = r);
-        window.requestAnimationFrame(resolve);
-        return promise
-    };
-
     // Upload one of the colormaps
     var colormapTexture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE1);
@@ -106,10 +100,19 @@ var volumeDims = [0, 0, 0];
                       bitmap);
     }
 
+    var animationFrame = function() {
+        var resolve = null;
+        var promise = new Promise(r => resolve = r);
+        window.requestAnimationFrame(resolve);
+        return promise
+    };
+
+    var tstep = 0;
+    var frame = 0;
     requestAnimationFrame(animationFrame);
     while (true) {
         await animationFrame();
-        if (document.hidden || volumeTexture === null) {
+        if (document.hidden || timesteps.length == 0) {
             continue;
         }
 
@@ -124,8 +127,12 @@ var volumeDims = [0, 0, 0];
         var eye = [camera.invCamera[12], camera.invCamera[13], camera.invCamera[14]];
         gl.uniform3fv(shader.uniforms["eye_pos"], eye);
 
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+        if (frame % 100 == 0) {
+            console.log(`frame = ${frame}, tstep = ${tstep}, # loaded = ${timesteps.length}`);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_3D, timesteps[tstep]);
+            tstep = (tstep + 1) % timesteps.length;
+        }
         gl.uniform1i(shader.uniforms["volume"], 0);
         gl.uniform1i(shader.uniforms["colormap"], 1);
 
@@ -141,11 +148,22 @@ var volumeDims = [0, 0, 0];
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, cubeStrip.length / 3);
         gl.finish();
+
+        frame += 1;
     }
 })();
 
 async function uploadZip(evt)
 {
+    // Delete the old time series
+    if (timesteps.length > 0) {
+        var oldTimesteps = timesteps;
+        timesteps = [];
+        for (var i = 0; i < oldTimesteps.length; ++i) {
+            gl.deleteTexture(oldTimesteps[i]);
+        }
+    }
+
     var files = evt.target.files;
     console.log(files);
     if (files.length == 0) {
@@ -210,6 +228,7 @@ async function uploadZip(evt)
                              gl.RED,
                              gl.UNSIGNED_BYTE,
                              img);
+            img.close();
         };
 
         // Now upload the other slices asynchronously
@@ -222,8 +241,6 @@ async function uploadZip(evt)
 
         var end = performance.now();
         console.log(`Volume loaded in ${end - start}ms`);
-        var tmp = volumeTexture;
-        volumeTexture = uploadTexture;
-        gl.deleteTexture(tmp);
+        timesteps.push(uploadTexture);
     }
 }
