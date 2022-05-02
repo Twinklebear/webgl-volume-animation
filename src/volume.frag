@@ -3,6 +3,8 @@
 precision highp int;
 precision highp float;
 
+uniform highp sampler2D image;
+
 out vec4 color;
 
 // Pseudo-random number gen from
@@ -19,6 +21,7 @@ float wang_hash(int seed) {
 
 
 void main(void) {
-    color = vec4(1.0);
+    //color = vec4(1.0);
+    color = 5.0 * texture(image, gl_FragCoord.xy / vec2(1280, 720));
 }
 
