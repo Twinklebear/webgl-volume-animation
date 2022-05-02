@@ -18,7 +18,6 @@ const defaultUp = vec3.set(vec3.create(), 0.0, 1.0, 0.0);
 var gl = null;
 var volumeTexture = null;
 var volumeDims = [0, 0, 0];
-var volumeReady = false;
 
 (async () => {
     var canvas = document.getElementById("webgl-canvas");
@@ -82,10 +81,35 @@ var volumeReady = false;
         return promise
     };
 
+    // Upload one of the colormaps
+    var colormapTexture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, colormapTexture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    {
+        var colormapImage = new Image();
+        colormapImage.src = colormaps["Cool Warm"];
+        await colormapImage.decode();
+        var bitmap = await createImageBitmap(colormapImage);
+        gl.texImage2D(gl.TEXTURE_2D,
+                      0,
+                      gl.RGBA8,
+                      colormapImage.width,
+                      colormapImage.height,
+                      0,
+                      gl.RGBA,
+                      gl.UNSIGNED_BYTE,
+                      bitmap);
+    }
+
     requestAnimationFrame(animationFrame);
     while (true) {
         await animationFrame();
-        if (document.hidden || !volumeReady) {
+        if (document.hidden || volumeTexture === null) {
             continue;
         }
 
@@ -100,7 +124,10 @@ var volumeReady = false;
         var eye = [camera.invCamera[12], camera.invCamera[13], camera.invCamera[14]];
         gl.uniform3fv(shader.uniforms["eye_pos"], eye);
 
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
         gl.uniform1i(shader.uniforms["volume"], 0);
+        gl.uniform1i(shader.uniforms["colormap"], 1);
 
         var longestAxis = Math.max(volumeDims[0], Math.max(volumeDims[1], volumeDims[2]));
         var volumeScale = [
@@ -117,7 +144,7 @@ var volumeReady = false;
     }
 })();
 
-function uploadZip(evt)
+async function uploadZip(evt)
 {
     var files = evt.target.files;
     console.log(files);
@@ -126,10 +153,12 @@ function uploadZip(evt)
     }
 
     // TODO: Handle multiple files if multiple timesteps uploaded
-    var file = files[0];
-    var start = performance.now();
-    JSZip.loadAsync(file).then(async function(zip) {
-        volumeReady = false;
+    // Here we'd want something more intelligent to load on demand and play though
+    // the textures, but this is fine for a test
+    for (var f = 0; f < files.length; ++f) {
+        console.log(files[f]);
+        var start = performance.now();
+        var zip = await JSZip.loadAsync(files[f]);
         var slices = zip.file(/\.webp/);
 
         // Load the first slice to determine the volume dimensions
@@ -140,11 +169,10 @@ function uploadZip(evt)
         volumeDims = [img.width, img.height, slices.length];
         console.log(volumeDims);
 
-        if (volumeTexture) {
-            gl.deleteTexture(volumeTexture);
-        }
-        volumeTexture = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+        var uploadTexture = gl.createTexture();
+        // Upload on texture unit 2
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_3D, uploadTexture);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
         gl.texStorage3D(gl.TEXTURE_3D, 1, gl.R8, volumeDims[0], volumeDims[1], volumeDims[2]);
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
@@ -170,6 +198,7 @@ function uploadZip(evt)
             var buf = await slices[i].async("arraybuffer");
             var blob = new Blob([buf], ["image/webp"]);
             var img = await createImageBitmap(blob);
+            gl.activeTexture(gl.TEXTURE2);
             gl.texSubImage3D(gl.TEXTURE_3D,
                              0,
                              0,
@@ -193,6 +222,8 @@ function uploadZip(evt)
 
         var end = performance.now();
         console.log(`Volume loaded in ${end - start}ms`);
-        volumeReady = true;
-    });
+        var tmp = volumeTexture;
+        volumeTexture = uploadTexture;
+        gl.deleteTexture(tmp);
+    }
 }

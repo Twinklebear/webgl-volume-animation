@@ -4,11 +4,19 @@ precision highp int;
 precision highp float;
 
 uniform ivec3 volume_dims;
+uniform highp sampler2D colormap;
 uniform highp sampler3D volume;
 
 in vec3 vray_dir;
 flat in vec3 transformed_eye;
 out vec4 color;
+
+float linear_to_srgb(float x) {
+    if (x <= 0.0031308f) {
+        return 12.92f * x;
+    }
+    return 1.055f * pow(x, 1.f / 2.4f) - 0.055f;
+}
 
 // Pseudo-random number gen from
 // http://www.reedbeta.com/blog/quick-and-easy-gpu-random-numbers-in-d3d11/
@@ -46,16 +54,16 @@ void main(void)
     }
     t_hit.x = max(t_hit.x, 0.0);
     vec3 dt_vec = 1.0 / (vec3(volume_dims) * abs(ray_dir));
-    float dt = min(dt_vec.x, min(dt_vec.y, dt_vec.z));
+    //const float dt_scale = 1.0;
+    float dt = /*dt_scale */ min(dt_vec.x, min(dt_vec.y, dt_vec.z));
     float offset = wang_hash(int(gl_FragCoord.x + 1280.0 * gl_FragCoord.y));
     vec3 p = transformed_eye + (t_hit.x + offset * dt) * ray_dir;
     color = vec4(0);
     for (float t = t_hit.x; t < t_hit.y; t += dt) {
         float val = texture(volume, p).r;
-        if (val > 0.1) {
-            val *= 2.0;
-            vec4 val_color = vec4(val);
-            //vec4 val_color = vec4(texture(colormap, vec2(val, 0.5)).rgb, val);
+        // TODO: Take value thresholds as parameters like webgl-neuron
+        if (val > 0.08) {
+            vec4 val_color = vec4(texture(colormap, vec2(val, 0.5)).rgb, val);
             // Opacity correction
             //val_color.a = 1.0 - pow(1.0 - val_color.a, dt_scale);
             color.rgb += (1.0 - color.a) * val_color.a * val_color.rgb;
@@ -66,10 +74,7 @@ void main(void)
         }
         p += ray_dir * dt;
     }
-    // sRGB render target?
-    /*
     color.r = linear_to_srgb(color.r);
     color.g = linear_to_srgb(color.g);
     color.b = linear_to_srgb(color.b);
-    */
 }
