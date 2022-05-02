@@ -11,7 +11,6 @@ const cubeStrip = [
     1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0,
     1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0
 ];
-
 const defaultEye = vec3.set(vec3.create(), 0.5, 0.5, 2.5);
 const defaultCenter = vec3.set(vec3.create(), 0.5, 0.5, 0.5);
 const defaultUp = vec3.set(vec3.create(), 0.0, 1.0, 0.0);
@@ -69,6 +68,11 @@ var volumeReady = false;
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
 
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.FRONT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
     var shader = new Shader(gl, vertexSrc, fragmentSrc);
 
     var animationFrame = function() {
@@ -92,59 +96,54 @@ var volumeReady = false;
 
         projView = mat4.mul(projView, proj, camera.camera);
         gl.uniformMatrix4fv(shader.uniforms["proj_view"], false, projView);
-        gl.uniform1i(shader.uniforms["image"], 0);
+
+        var eye = [camera.invCamera[12], camera.invCamera[13], camera.invCamera[14]];
+        gl.uniform3fv(shader.uniforms["eye_pos"], eye);
+
+        gl.uniform1i(shader.uniforms["volume"], 0);
+
+        var longestAxis = Math.max(volumeDims[0], Math.max(volumeDims[1], volumeDims[2]));
+        var volumeScale = [
+            volumeDims[0] / longestAxis,
+            volumeDims[1] / longestAxis,
+            volumeDims[2] / longestAxis
+        ];
+
+        gl.uniform3iv(shader.uniforms["volume_dims"], volumeDims);
+        gl.uniform3fv(shader.uniforms["volume_scale"], volumeScale);
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, cubeStrip.length / 3);
         gl.finish();
     }
 })();
 
-export function uploadZip(evt)
+function uploadZip(evt)
 {
     var files = evt.target.files;
     console.log(files);
+    if (files.length == 0) {
+        return;
+    }
 
+    // TODO: Handle multiple files if multiple timesteps uploaded
     var file = files[0];
+    var start = performance.now();
     JSZip.loadAsync(file).then(async function(zip) {
+        volumeReady = false;
         var slices = zip.file(/\.webp/);
-        for (var i = 0; i < slices.length; ++i) {
-            console.log(slices[i].name);
-        }
 
         // Load the first slice to determine the volume dimensions
         var buf = await slices[0].async("arraybuffer");
         var blob = new Blob([buf], ["image/webp"]);
         var img = await createImageBitmap(blob);
-        console.log(img);
 
         volumeDims = [img.width, img.height, slices.length];
         console.log(volumeDims);
 
+        if (volumeTexture) {
+            gl.deleteTexture(volumeTexture);
+        }
         volumeTexture = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, volumeTexture);
-        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-        // gl.texStorage3D(gl.TEXTURE_2D, 1, gl.R8, volumeDims[0], volumeDims[1],
-        // volumeDims[2]);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8, volumeDims[0], volumeDims[1]);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-        // Write the first slice, since we've already loaded it
-        gl.texSubImage2D(gl.TEXTURE_2D,
-                         0,
-                         0,
-                         0,
-                         volumeDims[0],
-                         volumeDims[1],
-                         gl.RED,
-                         gl.UNSIGNED_BYTE,
-                         img);
-        volumeReady = true;
-
-        /*
         gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
         gl.texStorage3D(gl.TEXTURE_3D, 1, gl.R8, volumeDims[0], volumeDims[1], volumeDims[2]);
@@ -163,35 +162,37 @@ export function uploadZip(evt)
                          volumeDims[0],
                          volumeDims[1],
                          1,
-                         gl.RGBA,
+                         gl.RED,
                          gl.UNSIGNED_BYTE,
                          img);
-                         */
 
-        // Now decode and write the other slices
-    });
+        var uploadSlice = async function(i) {
+            var buf = await slices[i].async("arraybuffer");
+            var blob = new Blob([buf], ["image/webp"]);
+            var img = await createImageBitmap(blob);
+            gl.texSubImage3D(gl.TEXTURE_3D,
+                             0,
+                             0,
+                             0,
+                             i,
+                             volumeDims[0],
+                             volumeDims[1],
+                             1,
+                             gl.RED,
+                             gl.UNSIGNED_BYTE,
+                             img);
+        };
 
-    /*
-    var reader = new FileReader();
-    reader.onerror = function() {
-        alert("Error reading ZIP file " + file.name);
-    };
-    */
-    /*
-     reader.onprogress = function(evt) {
-        var percent = numLoaded / files.length * 100;
-        loadingProgressBar.setAttribute("style", "width: " + percent.toFixed(2) + "%");
-    };
-    */
-    /*
-    reader.onload = function(evt) {
-        var buf = reader.result;
-        if (buf) {
-
-        } else {
-            alert("Unable to load file " + file.name);
+        // Now upload the other slices asynchronously
+        var promises = [];
+        for (var i = 1; i < slices.length; ++i) {
+            promises.push(uploadSlice(i));
         }
-    };
-    reader.readAsArrayBuffer(file);
-*/
+        // Wait for all slices to finish
+        await Promise.all(promises);
+
+        var end = performance.now();
+        console.log(`Volume loaded in ${end - start}ms`);
+        volumeReady = true;
+    });
 }
