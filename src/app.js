@@ -127,7 +127,7 @@ var volumeDims = [0, 0, 0];
         var eye = [camera.invCamera[12], camera.invCamera[13], camera.invCamera[14]];
         gl.uniform3fv(shader.uniforms["eye_pos"], eye);
 
-        if (frame % 100 == 0) {
+        if (frame % 24 == 0) {
             console.log(`frame = ${frame}, tstep = ${tstep}, # loaded = ${timesteps.length}`);
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_3D, timesteps[tstep]);
