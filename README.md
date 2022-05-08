@@ -1,6 +1,6 @@
 # WebGL Volume Animation
 
-Play back 3D volumetric time series data
+Play back 3D volumetric time series data. [Try it out online!](https://www.willusher.io/webgl-volume-animation)
 
 ## Data Format
 
