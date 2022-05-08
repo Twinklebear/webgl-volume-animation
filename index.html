@@ -21,23 +21,87 @@
                 </div>
             </div>
             <div class="mx-auto col-12 col-lg-8 row">
+                <h4>Playback and Rendering Controls</h4>
+            </div>
+            <div class="mx-auto col-12 col-lg-8 row">
+                <div class="col-1">
+                    <button id="restart-button" type="button" class="btn btn-primary"
+                        title="Return to the start of the animation">
+                       <i class="fas fa-fast-backward"></i> 
+                    </button>
+                </div>
+                <div class="col-1">
+                    <button id="step-backward" type="button" class="btn btn-primary"
+                        title="Step back 1 timestep">
+                        <i class="fas fa-step-backward"></i>
+                    </button>
+                </div>
+                <div class="col-1">
+                    <button id="play-button" type="button" class="btn btn-primary"
+                        title="Play">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button id="pause-button" type="button" class="btn btn-primary"
+                        title="Pause">
+                        <i class="fas fa-pause"></i>
+                    </button>
+                </div>
+                <div class="col-1">
+                    <button id="step-forward" type="button" class="btn btn-primary"
+                        title="Step forward 1 timestep">
+                        <i class="fas fa-step-forward"></i>
+                    </button>
+                </div>
+                <div class="col-12">
+                    <label id="current-timestep" for="timestep-slider" class="form-label">
+                        Current Timestep:</label>
+                    <br/>
+                    <input type="range" class="form-control-range"
+                            min="0" max="0" step="1" id="timestep-slider">
+                </div>
+            </div>
+            <div class="mx-auto col-12 col-lg-8 row">
+                <h4>Camera Controls</h4>
+            </div>
+            <div class="mx-auto col-12 col-lg-8 row">
+                <p>Desktop: Left-click + drag to rotate, scroll to zoom,
+                right-click + drag to pan.
+                <br/>
+                Touch: One finger drag to rotate, pinch to zoom, two finger drag to pan.
+            </div>
+            <div class="mx-auto col-12 col-lg-8 row">
                 <h4>Description</h4>
             </div>
             <div class="mx-auto col-12 col-lg-8 row">
-            <p>You can upload one or more Zip files or upload a text file with URLs to one or more Zip files,
-            with one URL per line. Each Zip file should be an image stack of WebP files.</p>
-            <p>
-            Playback speed and volume rendering controls coming soon :)
-            </p>
-            <div class="col-12 mt-0 mb-2">
-                <input type="file" class="custom-file-input" id="upload-zip"
-                                                             accept=".zip,.ZIP,.txt,.TXT"
-                                                             multiple>
-                <label class="custom-file-label" for="upload-zip">Upload Zipped WebP Stack(s) or URL List</label>
+                <p>You can upload one or more Zip files or upload a text file with URLs to one or more Zip files,
+                with one URL per line. Each Zip file should be an image stack of WebP files.</p>
+                <p>
+                Better playback speed and volume rendering controls coming soon, along with better
+                on-demand streaming and loading feedback for very large time series :)
+                </p>
+                <div class="mx-auto col-12 mt-0 mb-2">
+                    <input type="file" class="custom-file-input" id="upload-zip"
+                                                                 accept=".zip,.ZIP,.txt,.TXT"
+                                                                 multiple>
+                    <label class="custom-file-label" for="upload-zip">
+                        Upload Zipped WebP Stack(s) or URL List</label>
+                </div>
             </div>
+            <div class="mx-auto col-12 col-lg-8 row">
+                <h4>Note for Windows Users</h4>
+            </div>
+            <div class="mx-auto col-12 col-lg-8 row">
+                If you see crashes, poor performance or high memory use on Windows you can
+                change Chrome's WebGL backend (ANGLE) to use OpenGL instead of DirectX11.
+                This will provide a more direct mapping from the application code to the
+                graphics driver, resulting in better performance and reduced overhead.
+                You can change this flag <a href="chrome://flags/#use-angle">here</a>
+                by setting it to OpenGL.
             </div>
         </div>
     </div>
+
+    <script src="https://kit.fontawesome.com/b56adde3a3.js" crossorigin="anonymous"></script>
 </body>
 </html>
 

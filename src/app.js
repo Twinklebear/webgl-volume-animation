@@ -18,8 +18,9 @@ const defaultUp = vec3.set(vec3.create(), 0.0, 1.0, 0.0);
 
 var gl = null;
 var timesteps = [];
-var tstep = 0;
-var frame = 0;
+var frame = 1;
+var playing = true;
+var timestepSlider = document.getElementById("timestep-slider");
 
 (async () => {
     var canvas = document.getElementById("webgl-canvas");
@@ -31,6 +32,8 @@ var frame = 0;
     }
 
     document.getElementById("upload-zip").onchange = loadZipFile;
+
+    setupPlaybackControls();
 
     // Decode any URL parameters
     if (window.location.hash) {
@@ -132,6 +135,7 @@ var frame = 0;
         return promise
     };
 
+    var timestepDisplay = document.getElementById("current-timestep");
     requestAnimationFrame(animationFrame);
     while (true) {
         await animationFrame();
@@ -150,31 +154,37 @@ var frame = 0;
         var eye = [camera.invCamera[12], camera.invCamera[13], camera.invCamera[14]];
         gl.uniform3fv(shader.uniforms["eye_pos"], eye);
 
-        var currentTimestep = timesteps[tstep];
-        if (frame % 24 == 0) {
+        var currentStack = timesteps[parseInt(timestepSlider.value)];
+        if (playing && frame % 12 == 0) {
+            timestepSlider.value = (parseInt(timestepSlider.value) + 1) % timesteps.length;
+
+            currentStack = timesteps[parseInt(timestepSlider.value)];
             gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_3D, currentTimestep.texture);
-            tstep = (tstep + 1) % timesteps.length;
+            gl.bindTexture(gl.TEXTURE_3D, currentStack.texture);
         }
         gl.uniform1i(shader.uniforms["volume"], 0);
         gl.uniform1i(shader.uniforms["colormap"], 1);
 
         var longestAxis =
-            Math.max(currentTimestep.volumeDims[0],
-                     Math.max(currentTimestep.volumeDims[1], currentTimestep.volumeDims[2]));
+            Math.max(currentStack.volumeDims[0],
+                     Math.max(currentStack.volumeDims[1], currentStack.volumeDims[2]));
         var volumeScale = [
-            currentTimestep.volumeDims[0] / longestAxis,
-            currentTimestep.volumeDims[1] / longestAxis,
-            currentTimestep.volumeDims[2] / longestAxis
+            currentStack.volumeDims[0] / longestAxis,
+            currentStack.volumeDims[1] / longestAxis,
+            currentStack.volumeDims[2] / longestAxis
         ];
 
-        gl.uniform3iv(shader.uniforms["volume_dims"], currentTimestep.volumeDims);
+        gl.uniform3iv(shader.uniforms["volume_dims"], currentStack.volumeDims);
         gl.uniform3fv(shader.uniforms["volume_scale"], volumeScale);
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, cubeStrip.length / 3);
         gl.finish();
 
-        frame += 1;
+        timestepDisplay.innerText = `Current Timestep: ${timestepSlider.value}`;
+
+        if (playing) {
+            frame += 1;
+        }
     }
 })();
 
@@ -187,8 +197,9 @@ async function loadZipFile(evt)
         for (var i = 0; i < old.length; ++i) {
             old[i].deleteTexture(gl);
         }
-        tstep = 0;
-        frame = 0;
+        timestepSlider.value = 0;
+        frame = 1;
+        timestepSlider.max = 0;
     }
 
     var files = evt.target.files;
@@ -212,6 +223,8 @@ async function loadZipFile(evt)
     } else {
         alert(`Unsupported file type ${files[0].type}`);
     }
+
+    timestepSlider.max = timesteps.length - 1;
 }
 
 async function loadURLList(lines)
@@ -225,5 +238,71 @@ async function loadURLList(lines)
         await timestep.uploadToGPU(gl, 2);
         timesteps.push(timestep);
     }
+    timestepSlider.max = timesteps.length - 1;
 }
 
+// Setup the animation playback controls
+function setupPlaybackControls()
+{
+    document.getElementById("restart-button").onclick = function() {
+        timestepSlider.value = 0;
+        frame = 1;
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, timesteps[parseInt(timestepSlider.value)].texture);
+    };
+
+    document.getElementById("step-backward").onclick = function() {
+        if (timesteps.length == 0) {
+            return;
+        }
+        var val = parseInt(timestepSlider.value);
+        if (val == 0) {
+            timestepSlider.value = timesteps.length - 1;
+        } else {
+            timestepSlider.value = val - 1;
+        }
+        frame = 1;
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, timesteps[parseInt(timestepSlider.value)].texture);
+    };
+
+    var playButton = document.getElementById("play-button");
+    var pauseButton = document.getElementById("pause-button");
+    playButton.hidden = true;
+
+    playButton.onclick = function() {
+        playing = true;
+        frame = 1;
+
+        playButton.hidden = true;
+        pauseButton.hidden = false;
+    };
+
+    pauseButton.onclick = function() {
+        playing = false;
+        frame = 1;
+
+        playButton.hidden = false;
+        pauseButton.hidden = true;
+    };
+
+    document.getElementById("step-forward").onclick = function() {
+        if (timesteps.length == 0) {
+            return;
+        }
+        timestepSlider.value = (parseInt(timestepSlider.value) + 1) % timesteps.length;
+        frame = 1;
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, timesteps[parseInt(timestepSlider.value)].texture);
+    };
+
+    timestepSlider.oninput = function(e) {
+        frame = 1;
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, timesteps[parseInt(timestepSlider.value)].texture);
+    };
+}
