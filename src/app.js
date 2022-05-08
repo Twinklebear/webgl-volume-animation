@@ -18,6 +18,8 @@ const defaultUp = vec3.set(vec3.create(), 0.0, 1.0, 0.0);
 
 var gl = null;
 var timesteps = [];
+var tstep = 0;
+var frame = 0;
 
 (async () => {
     var canvas = document.getElementById("webgl-canvas");
@@ -29,6 +31,30 @@ var timesteps = [];
     }
 
     document.getElementById("upload-zip").onchange = loadZipFile;
+
+    // Decode any URL parameters
+    if (window.location.hash) {
+        // var regexResolution = /(\d+)x(\d+)/;
+        // var regexVoxelSpacing = /(\d+\.?\d?)x(\d+\.?\d?)x(\d+\.?\d?)/;
+        var urlParams = window.location.hash.substring(1).split("&");
+        for (var i = 0; i < urlParams.length; ++i) {
+            var str = decodeURI(urlParams[i]);
+            console.log(str);
+            // URL load param
+            if (str.startsWith("url=")) {
+                await fetch(str.substring(4))
+                    .then(function(response) {
+                        if (response.status === 200 || response.status === 0) {
+                            return Promise.resolve(response.text());
+                        } else {
+                            return Promise.reject(new Error(response.statusText));
+                        }
+                    })
+                    .then(text => loadURLList(text.split("\n")));
+                continue;
+            }
+        }
+    }
 
     // Setup camera and camera controls
     var camera = new ArcballCamera(
@@ -106,8 +132,6 @@ var timesteps = [];
         return promise
     };
 
-    var tstep = 0;
-    var frame = 0;
     requestAnimationFrame(animationFrame);
     while (true) {
         await animationFrame();
@@ -163,6 +187,8 @@ async function loadZipFile(evt)
         for (var i = 0; i < old.length; ++i) {
             old[i].deleteTexture(gl);
         }
+        tstep = 0;
+        frame = 0;
     }
 
     var files = evt.target.files;
@@ -171,12 +197,33 @@ async function loadZipFile(evt)
         return;
     }
 
-    // Here we'd want something more intelligent to load on demand and play though
-    // the textures, but this is fine for a test
-    for (var i = 0; i < files.length; ++i) {
-        console.log(files[i]);
-        var timestep = new ZipStack(files[i]);
+    if (files[0].type === "application/zip") {
+        // Here we'd want something more intelligent to load on demand and play though
+        // the textures, but this is fine for a test
+        for (var i = 0; i < files.length; ++i) {
+            console.log(files[i]);
+            var timestep = new ZipStack(files[i]);
+            await timestep.uploadToGPU(gl, 2);
+            timesteps.push(timestep);
+        }
+    } else if (files[0].type === "text/plain") {
+        var content = await files[0].text();
+        await loadURLList(content.split("\n"));
+    } else {
+        alert(`Unsupported file type ${files[0].type}`);
+    }
+}
+
+async function loadURLList(lines)
+{
+    for (var i = 0; i < lines.length; ++i) {
+        console.log(lines[i]);
+        if (lines[i].length == 0) {
+            continue;
+        }
+        var timestep = new ZipStack(lines[i]);
         await timestep.uploadToGPU(gl, 2);
         timesteps.push(timestep);
     }
 }
+
