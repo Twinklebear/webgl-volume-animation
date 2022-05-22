@@ -11,3 +11,4 @@ glslc.exe
 node_modules
 dist/
 *.zip
+test_data/

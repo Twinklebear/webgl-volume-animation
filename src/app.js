@@ -208,7 +208,8 @@ async function loadZipFile(evt)
         return;
     }
 
-    if (files[0].type === "application/zip") {
+    if (files[0].type === "application/zip" ||
+        files[0].type === "application/x-zip-compressed") {
         // Here we'd want something more intelligent to load on demand and play though
         // the textures, but this is fine for a test
         for (var i = 0; i < files.length; ++i) {
